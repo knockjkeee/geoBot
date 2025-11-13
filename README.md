@@ -3,10 +3,10 @@
 ___
 >
 > geobot/  
-> ├── config/ (конфигурации инфраструктуры)  
-> ├── data/ (данные сервисов)  
+> ├── config/ (конфигурации инфраструктурных слоев)  
+> ├── data/ (данные сервисов)  --> создастся сам  
+> ├── readme/ (документация)  
 > ├── services/ (функциональные слои)  
-> ├── docs/ (документация)  
 > ├── docker-compose.yml (главный контейнер)  
 > ├── .env (переменыне среды)  
 > ├── init.sh (файл развертывания)  
@@ -21,7 +21,7 @@ sh init.sh
 ```
 Вся инфраструктура развернется в одном контейнере
 
-### Ссылки инфраструктурные
+### Инфраструктурные сервисы
 ___
 > - kafka ui - http://localhost:8090   
 > - kafka - SASL_PLAINTEXT://localhost:9092 ,PLAINTEXT_INTERNAL://kafka:9093   
@@ -33,13 +33,13 @@ ___
 > - grafana - http://localhost:3000
 > - portainer - http://localhost:9000
 
-### Ссылки функциональные
+### Функциональные сервисы
 ___
 > - LK- http://localhost:5500   
 > - ARM - http://localhost:8000  
 > - LOG - http://localhost:2181   
-> - WORKER-0 - http://localhost:5005/8011  
-> - WORKER-1 - http://localhost:5005/8012  
+> - WORKER-0 - http://localhost:8011  
+> - WORKER-1 - http://localhost:8012  
 ~~> ORCHESTRATOR - http://localhost:8080~~   
 
 
@@ -162,7 +162,7 @@ handler.process(payload, producer)
 
 ## Текущая реализация топиков
 ___
-### ЛК:  
+### ЛК (Rest):  
 > /create_user -> create_user_in   
 > /update_user -> update_user_in  
 > /info -> info_in  
