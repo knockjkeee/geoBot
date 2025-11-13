@@ -1,0 +1,24 @@
+node.name: logstash
+path.data: /usr/share/logstash/data
+
+pipeline.workers: 2
+pipeline.batch.size: 125
+pipeline.batch.delay: 50
+
+path.config: /usr/share/logstash/pipeline
+config.reload.automatic: true
+config.reload.interval: 3s
+
+log.level: info
+#log.format: json
+path.logs: /usr/share/logstash/logs
+
+slowlog.threshold.warn: 2s
+slowlog.threshold.info: 1s
+
+http.host: "0.0.0.0"
+http.port: 9600
+
+monitoring.enabled: false
+dead_letter_queue.enable: false
+queue.type: memory

@@ -1,0 +1,74 @@
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'kafka-microservices'
+    environment: 'development'
+
+scrape_configs:
+  - job_name: 'prometheus'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['prometheus:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'
+
+  - job_name: 'flask-producer'
+    scrape_interval: 15s
+    metrics_path: '/metrics'
+    static_configs:
+#      - targets: ['flask-producer:5000']
+      - targets: ['host.docker.internal:5500']
+        labels:
+          service: 'flask-producer'
+          component: 'api'
+          tier: 'frontend'
+
+  - job_name: 'user-processor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+#      - targets: ['user-processor:8000']
+        labels:
+          service: 'user-processor'
+          component: 'processor'
+          tier: 'backend'
+
+  - job_name: 'task-processor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+#      - targets: ['task-processor:8001']
+        labels:
+          service: 'task-processor'
+          component: 'processor'
+          tier: 'backend'
+
+  - job_name: 'info-processor'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8002']
+        labels:
+          service: 'info-processor'
+          component: 'processor'
+          tier: 'backend'
+
+  - job_name: 'orchestrator'
+    scrape_interval: 30s
+    static_configs:
+#      - targets: ['orchestrator:8080']
+      - targets: ['host.docker.internal:8080']
+        labels:
+          service: 'orchestrator'
+          component: 'management'
+          tier: 'control-plane'
+
+  - job_name: 'grafana'
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+          component: 'visualization'

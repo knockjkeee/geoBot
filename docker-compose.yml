@@ -1,0 +1,481 @@
+#version: "3.8"
+name: geoBot
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: zookeeper
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_INIT_LIMIT: 5
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_ALLOW_ANONYMOUS_LOGINS: "false"
+      KAFKA_OPTS: >
+        -Djava.security.auth.login.config=/etc/zookeeper/zookeeper_jaas.conf
+        -Dzookeeper.superUser=${ZOOKEEPER_SUPER_USER}
+        -Dzookeeper.requireClientAuthScheme=sasl
+        -Dzookeeper.sasl.client=true
+        -Dzookeeper.sasl.clientconfig=Server
+        -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+    volumes:
+      - ./config/zookeeper/zookeeper_jaas.conf:/etc/zookeeper/zookeeper_jaas.conf
+      - ./data/zookeeper_data:/var/lib/zookeeper/data
+      - ./data/zookeeper_logs:/var/lib/zookeeper/log
+    networks:
+      - kafka_network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+      - "9999:9999"
+    environment:
+      #      KAFKA_CFG_LOG_RETENTION_MS: 604800000
+      KAFKA_CFG_LOG_CLEANUP_POLICY: delete
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'SASL_PLAINTEXT:SASL_PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT'
+      KAFKA_ADVERTISED_LISTENERS: 'SASL_PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:9093'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT_INTERNAL'
+      KAFKA_SASL_ENABLED_MECHANISMS: 'SCRAM-SHA-256'
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: 'SCRAM-SHA-256'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_jaas.conf"
+      KAFKA_JMX_PORT: 9999
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    volumes:
+      - ./data/kafka_data:/var/lib/kafka/data
+      - ./config/kafka/kafka_jaas.conf:/etc/kafka/kafka_jaas.conf
+    networks:
+      - kafka_network
+    restart: unless-stopped
+
+  kafka-init:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_started
+    environment:
+      - KAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+    #    entrypoint: [ "/bin/sh", "-c" ]
+    volumes:
+      - ./config/init/init-kafka.sh:/usr/local/bin/init-kafka.sh
+    entrypoint: [ "/bin/sh", "/usr/local/bin/init-kafka.sh" ]
+    #    command: |
+    #      echo "⏳ Waiting for Kafka to be ready..."
+    #      sleep 10
+    #      echo "🔑 Creating admin SCRAM user..."
+    #      kafka-configs --bootstrap-server kafka:9093 \
+    #        --alter --add-config 'SCRAM-SHA-256=[password=${KAFKA_ADMIN_PASSWORD}]' \
+    #        --entity-type users --entity-name admin
+    #      echo "✅ Kafka SCRAM user 'admin' created successfully."
+    networks:
+      - kafka_network
+    restart: "no"
+
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_started
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9093
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - kafka_network
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.2
+    container_name: elasticsearch
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - cluster.name=docker-cluster
+      - node.name=elasticsearch
+      - discovery.type=single-node
+      # ВКЛЮЧАЕМ БЕЗОПАСНОСТЬ
+      - xpack.security.enabled=true # change
+      - xpack.security.enrollment.enabled=true
+      # SSL/TLS настройки (отключены для упрощения внутренней сети)
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+      # Java настройки
+      - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.ml.enabled=false
+      # Настройки для встроенных пользователей
+      - xpack.security.authc.api_key.enabled=true
+      - xpack.security.authc.token.enabled=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - ./data/elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elk_network
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -u ${ELASTIC_USER}:${ELASTIC_PASSWORD} -f http://localhost:9200/_cat/health >/dev/null 2>&1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  elastic-init:
+    image: curlimages/curl:8.10.1
+    container_name: elastic-init
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTIC_USER=${ELASTIC_USER}
+      - ELASTICSEARCH_PASSWORD_LOGSTASH=${ELASTICSEARCH_PASSWORD_LOGSTASH}
+      - ELASTICSEARCH_PASSWORD_KIBANA=${ELASTICSEARCH_PASSWORD_KIBANA}
+      - ELASTICSEARCH_PASSWORD_READER=${ELASTICSEARCH_PASSWORD_READER}
+      - ELASTICSEARCH_PASSWORD_DEV=${ELASTICSEARCH_PASSWORD_DEV}
+    #    entrypoint: [ "/bin/sh", "-c" ]
+    volumes:
+      - ./config/init/init-elastic.sh:/usr/local/bin/init-elastic.sh
+    entrypoint: [ "/bin/sh", "/usr/local/bin/init-elastic.sh" ]
+    networks:
+      - elk_network
+    restart: "no"
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.10.2
+    container_name: logstash
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./config/logstash/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      - ./config/logstash/logstash.yml:/usr/share/logstash/config/logstash.yml
+    ports:
+      - "5005:5005"
+      - "5044:5044"
+      - "9600:9600"
+    environment:
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME_LOGSTASH}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD_LOGSTASH}
+
+      - HTTP_USER_LOGSTASH=${HTTP_USER_LOGSTASH}
+      - HTTP_PW_LOGSTASH=${HTTP_PW_LOGSTASH}
+
+      - ELASTIC_USER=${ELASTIC_USER}
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+
+      - "LS_JAVA_OPTS=-Xmx512m -Xms512m"
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - elk_network
+      - kafka_network
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.2
+    container_name: kibana
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "5601:5601"
+    environment:
+      # Учетные данные для подключения к Elasticsearch
+      - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME_KIBANA}
+      - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD_KIBANA}
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_PUBLICBASEURL=http://localhost:5601
+      # Ключ шифрования для сохраненных объектов (минимум 32 символа)
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=min-32-byte-long-strong-encryption-key-change-this
+
+      # Дополнительные ключи для безопасности
+      - XPACK_SECURITY_ENCRYPTIONKEY=a7s8d9f0a7s8d9f0a7s8d9f0a7s8d9f0
+      - XPACK_REPORTING_ENCRYPTIONKEY=b8t9e0g1b8t9e0g1b8t9e0g1b8t9e0g1
+
+      # Настройки безопасности
+      - XPACK_SECURITY_ENABLED=true
+      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
+
+    ##      - XPACK_SECURITY_ENABLED=false
+    #      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=min-32-byte-long-strong-encryption-key
+    networks:
+      - elk_network
+    restart: unless-stopped
+  #
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    volumes:
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./data/prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - monitoring_network
+      - kafka_network
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${SECURITY_ADMIN_USER_GRAFANA}
+      - GF_SECURITY_ADMIN_PASSWORD=${SECURITY_ADMIN_PASSWORD_GRAFANA}
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    volumes:
+      - ./data/grafana_data:/var/lib/grafana
+      - ./config/grafana/provisioning:/etc/grafana/provisioning
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+
+  lk-producer:
+    build:
+      context: ./services/lk-producer
+      dockerfile: Dockerfile
+    container_name: lk-producer
+    #    depends_on:
+    #      kafka:
+    #        condition: service_started
+    #      logstash:
+    #        condition: service_started
+    ports:
+      - "5500:5500"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093 # внутри контейнера
+      - KAFKA_SASL_USERNAME=${KAFKA_ADMIN_USER}
+      - KAFKA_SASL_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - FLASK_PORT=5500
+    volumes:
+      - ./logs/flask_logs:/app/logs
+    networks:
+      - app_network
+      - kafka_network
+      - monitoring_network
+    restart: unless-stopped
+  #
+  arm-processor:
+    build:
+      context: ./services/arm-processor
+      dockerfile: Dockerfile
+    container_name: arm-processor
+    #    depends_on:
+    #      kafka:
+    #        condition: service_started
+    #      logstash:
+    #        condition: service_started
+    ports:
+      - "8000:8000"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093 # внутри контейнера
+      - KAFKA_SASL_USERNAME=${KAFKA_ADMIN_USER}
+      - KAFKA_SASL_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - CONSUMER_GROUP=arm-processor-group
+      - METRICS_PORT=8000
+    networks:
+      - kafka_network
+      - monitoring_network
+    restart: unless-stopped
+
+  worker-processor-0:
+    build:
+      context: ./services/worker-processor
+      dockerfile: Dockerfile
+    container_name: worker-processor-0
+    #    depends_on:
+    #      kafka:
+    #        condition: service_started
+    #      logstash:
+    #        condition: service_started
+    ports:
+      - "8011:8011"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093 # внутри контейнера
+      - KAFKA_SASL_USERNAME=${KAFKA_ADMIN_USER}
+      - KAFKA_SASL_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - CURRENT_PORT=8011
+      - PARTITION_ID=0
+      - CONSUMER_GROUP=worker-processor-group
+      - METRICS_PORT=8011
+    networks:
+      - kafka_network
+      - monitoring_network
+      - elk_network
+    restart: unless-stopped
+
+  worker-processor-1:
+    build:
+      context: ./services/worker-processor
+      dockerfile: Dockerfile
+    container_name: worker-processor-1
+    #    depends_on:
+    #      kafka:
+    #        condition: service_started
+    #      logstash:
+    #        condition: service_started
+    ports:
+      - "8012:8012"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093 # внутри контейнера
+      - KAFKA_SASL_USERNAME=${KAFKA_ADMIN_USER}
+      - KAFKA_SASL_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - CURRENT_PORT=8012
+      - PARTITION_ID=1
+      - CONSUMER_GROUP=worker-processor-group
+      - METRICS_PORT=8012
+    networks:
+      - kafka_network
+      - monitoring_network
+      - elk_network
+    restart: unless-stopped
+
+  log-processor:
+    build:
+      context: ./services/log-processor
+      dockerfile: Dockerfile
+    container_name: log-processor
+    #    depends_on:
+    #      kafka:
+    #        condition: service_started
+    #      logstash:
+    #        condition: service_started
+    ports:
+      - "8002:8002"
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093 # внутри контейнера
+      - KAFKA_SASL_USERNAME=${KAFKA_ADMIN_USER}
+      - KAFKA_SASL_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - CONSUMER_GROUP=log-processor-group
+      - METRICS_PORT=8002
+      - LOGSTASH_HOST=logstash
+      - LOGSTASH_PORT=5005
+    networks:
+      - kafka_network
+      - monitoring_network
+      - elk_network
+    restart: unless-stopped
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+      - "8008:8000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data/portainer_data:/data
+    networks:
+      - monitoring_network
+    restart: unless-stopped
+  #
+  #  nginx:
+  #    image: nginx:alpine
+  #    container_name: nginx
+  #    ports:
+  #      - "80:80"
+  #      - "443:443"
+  #    volumes:
+  #      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+  #      - ./config/nginx/conf.d:/etc/nginx/conf.d
+  #      - nginx_logs:/var/log/nginx
+  #    networks:
+  #      - app_network
+  #      - kafka_network
+  #    restart: unless-stopped
+
+#  orchestrator:
+#    build:
+#      context: ./services/orchestrator
+#      dockerfile: Dockerfile
+#    container_name: orchestrator
+#    depends_on:
+#      - kafka
+#      - portainer
+#    ports:
+#      - "8080:8080"
+#    environment:
+#      - KAFKA_BOOTSTRAP_SERVERS=kafka:9093
+#      - KAFKA_SASL_USERNAME=admin
+#      - KAFKA_SASL_PASSWORD=admin-secret
+#      - ORCHESTRATOR_PORT=8080
+#      - PORTAINER_URL=http://portainer:9000/api
+#      - PORTAINER_API_KEY=${PORTAINER_API_KEY}
+#    volumes:
+#      - /var/run/docker.sock:/var/run/docker.sock
+#    networks:
+#      - kafka_network
+#      - monitoring_network
+#    restart: unless-stopped
+
+volumes:
+  zookeeper_data:
+  zookeeper_logs:
+  kafka_data:
+  elasticsearch_data:
+  prometheus_data:
+  grafana_data:
+  portainer_data:
+  nginx_logs:
+  flask_logs:
+
+networks:
+  kafka_network:
+    driver: bridge
+  elk_network:
+    driver: bridge
+  monitoring_network:
+    driver: bridge
+  app_network:
+    driver: bridge

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>REST LK</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+        body {
+            margin: 0;
+            font-family: 'Roboto', Arial, sans-serif;
+            background-color: #121212;
+            color: #eee;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            padding: 40px 30px;
+            border-radius: 10px;
+            background: #1e1e1e;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.8);
+            border: 1px solid #333;
+        }
+        .icon {
+            font-size: 64px;
+            color: #e74c3c;
+            margin-bottom: 25px;
+        }
+        h1 {
+            font-weight: 700;
+            font-size: 36px;
+            margin-bottom: 15px;
+            color: #f44336;
+        }
+        p {
+            font-weight: 400;
+            font-size: 18px;
+            color: #bbb;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        button {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 14px 25px;
+            font-size: 16px;
+            font-weight: 700;
+            margin: 8px 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 4px 10px rgba(244,67,54,0.6);
+        }
+        button:hover {
+            background-color: #d32f2f;
+            box-shadow: 0 6px 15px rgba(211,47,47,0.7);
+        }
+        footer {
+            margin-top: 40px;
+            font-size: 13px;
+            color: #777;
+        }
+        #response {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #eee;
+            min-height: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">🛠️</div>
+        <h1>Rest endpoint LK</h1>
+        <div>
+            <button onclick="callEndpoint('create_user')">Создать пользователя (GET)</button>
+            <button onclick="callEndpoint('update_user')">Обновить пользователя (POST)</button>
+            <button onclick="callEndpoint('info')">Получить информацию (GET)</button>
+            <button onclick="callEndpoint('start_task')">Запустить задачу (GET)</button>
+            <button onclick="location.reload();">Обновить страницу</button>
+        </div>
+        <div id="response"></div>
+    </div>
+    <script>
+        function callEndpoint(endpoint) {
+            const url = '/' + endpoint;
+            let options = {};
+            if (endpoint === 'update_user') {
+                options = {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: 1, name: "Updated User" })
+                };
+            }
+            fetch(url, options)
+                .then(response => response.json())
+                .then(data => {
+                    const respDiv = document.getElementById('response');
+                    if (data.status === 'success') {
+                        respDiv.textContent = `Успех: действие '${endpoint}' выполнено.`;
+                        respDiv.style.color = "#4CAF50";
+                    } else {
+                        respDiv.textContent = `Ошибка при выполнении '${endpoint}'.`;
+                        respDiv.style.color = "#f44336";
+                    }
+                })
+                .catch(e => {
+                    const respDiv = document.getElementById('response');
+                    respDiv.textContent = `Ошибка запроса: ${e}`;
+                    respDiv.style.color = "#f44336";
+                });
+        }
+    </script>
+</body>
+</html>
