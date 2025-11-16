@@ -98,18 +98,6 @@ class HandlerFactory:
 
 
 def create_kafka_consumer(topics):
-    # return KafkaConsumer(
-    #     *topics,
-    #     bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    #     value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-    #     security_protocol='SASL_PLAINTEXT',
-    #     sasl_mechanism='SCRAM-SHA-256',
-    #     sasl_plain_username=KAFKA_SASL_USERNAME,
-    #     sasl_plain_password=KAFKA_SASL_PASSWORD,
-    #     group_id=CONSUMER_GROUP,
-    #     enable_auto_commit=True,
-    #     auto_offset_reset='earliest'
-    # )
 
     try:
         if '9093' in KAFKA_BOOTSTRAP_SERVERS:
@@ -119,7 +107,7 @@ def create_kafka_consumer(topics):
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 security_protocol='PLAINTEXT',
                 group_id=CONSUMER_GROUP,
-                enable_auto_commit=True,
+                enable_auto_commit=False,  # если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -133,7 +121,7 @@ def create_kafka_consumer(topics):
                 sasl_plain_username=KAFKA_SASL_USERNAME,
                 sasl_plain_password=KAFKA_SASL_PASSWORD,
                 group_id=CONSUMER_GROUP,
-                enable_auto_commit=True,
+                enable_auto_commit=False,  # если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -201,10 +189,12 @@ def process_messages():
 
                 if handler.process(payload, producer):
                     MESSAGES_PROCESSED.labels(action_type=action).inc()
+                    consumer.commit()
             except Exception as e:
                 logger.error(f"Error processing message: {str(e)}")
             finally:
                 PROCESSING_TIME.observe(time.time() - start_time)
+
     finally:
         consumer.close()
         producer.close()

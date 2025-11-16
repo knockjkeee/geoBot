@@ -50,7 +50,7 @@ def create_kafka_consumer():
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 security_protocol='PLAINTEXT',
                 group_id=CONSUMER_GROUP,
-                enable_auto_commit=True,
+                enable_auto_commit=False, #если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -64,7 +64,7 @@ def create_kafka_consumer():
                 sasl_plain_username=KAFKA_SASL_USERNAME,
                 sasl_plain_password=KAFKA_SASL_PASSWORD,
                 group_id=CONSUMER_GROUP,
-                enable_auto_commit=True,
+                enable_auto_commit=False, #если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -80,14 +80,6 @@ def create_kafka_consumer():
 
 
 def create_kafka_producer():
-    # return KafkaProducer(
-    #     bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-    #     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-    #     security_protocol='SASL_PLAINTEXT',
-    #     sasl_mechanism='SCRAM-SHA-256',
-    #     sasl_plain_username=KAFKA_SASL_USERNAME,
-    #     sasl_plain_password=KAFKA_SASL_PASSWORD
-    # )
 
     try:
         if '9093' in KAFKA_BOOTSTRAP_SERVERS:
@@ -131,12 +123,6 @@ def create_kafka_producer():
 def process_task(message, producer):
     try:
         ACTIVE_TASKS.inc()
-        # result = {
-        #     'processed_by': 'TaskProcessor',
-        #     'processed_at': datetime.utcnow().isoformat(),
-        #     'task_status': 'completed'
-        # }
-
         result = {
             'service': SERVICE_NAME,
             'action': message.get('action'),
@@ -167,6 +153,7 @@ def process_messages():
             start_time = time.time()
             process_task(message.value, producer)
             PROCESSING_TIME.observe(time.time() - start_time)
+            consumer.commit()
     finally:
         consumer.close()
         producer.close()

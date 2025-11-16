@@ -52,7 +52,7 @@ def create_kafka_consumer():
                 value_deserializer=lambda m: json.loads(m.decode('utf-8')),
                 security_protocol='PLAINTEXT',
                 group_id='info-processor-group',
-                enable_auto_commit=True,
+                enable_auto_commit=False,  # если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -66,7 +66,7 @@ def create_kafka_consumer():
                 sasl_plain_username=KAFKA_SASL_USERNAME,
                 sasl_plain_password=KAFKA_SASL_PASSWORD,
                 group_id='info-processor-group',
-                enable_auto_commit=True,
+                enable_auto_commit=False,  # если нужен автокоммит, переводим в True
                 auto_offset_reset='earliest'
             )
 
@@ -110,6 +110,7 @@ def process_messages():
     try:
         for message in consumer:
             send_to_elk(message.value)
+            consumer.commit()
     finally:
         consumer.close()
 

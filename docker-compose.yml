@@ -97,7 +97,6 @@ services:
       - kafka_network
     restart: "no"
 
-
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
